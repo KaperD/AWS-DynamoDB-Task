@@ -1,11 +1,8 @@
 package ru.hse.task;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-
-import org.hsqldb.Server;
+import java.util.List;
+import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) {
@@ -16,41 +13,35 @@ public class Main {
         String pathToCsv = args[0];
         CSVTable table = null;
         try {
-            table = new CSVTable(pathToCsv);
+            table = new CSVTable(pathToCsv, "main");
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            System.err.println(e.getMessage());
             System.exit(1);
         }
-        try (AutoClosableServer server = new AutoClosableServer()) {
-            server.setDatabaseName(0, "mainDb");
-            server.setDatabasePath(0, "mem:mainDb");
-            server.start();
-            try (Connection connection = DriverManager.getConnection("jdbc:hsqldb:mem:mainDb", "SA", "")) {
-                table.createTable("test", connection);
-                table.insertAllValues("test", connection);
-                ResultSet resultSet = connection.prepareStatement("select * from test").executeQuery();
-                int columnCount = resultSet.getMetaData().getColumnCount();
-                while (resultSet.next()) {
-                    for (int k = 1; k <= columnCount; k++) {
-                        System.out.print(resultSet.getString(k));
-                        if (k != columnCount) {
-                            System.out.print(",");
-                        }
+        try (InMemoryServer server = new InMemoryServer()) {
+            server.saveTable(table);
+            printTable(server.readTable(table.getName()));
+            Scanner scanner = new Scanner(System.in);
+            String sql = scanner.nextLine();
+            while (!sql.equals("exit")) {
+                if (!sql.isEmpty()) {
+                    try {
+                        printTable(server.read(sql));
+                    } catch (Exception e) {
+                        System.err.println(e.getMessage());
                     }
-                    System.out.println();
                 }
-            } catch (SQLException e) {
-                System.out.println("Internal error: " + e.getMessage());
+                sql = scanner.nextLine();
             }
+        } catch (SQLException e) {
+            System.err.println(e.getMessage());
+            System.exit(1);
         }
     }
 
-
-    static class AutoClosableServer extends Server implements AutoCloseable {
-
-        @Override
-        public void close() {
-            stop();
-        }
+    private static void printTable(List<List<String>> rows) {
+        rows.forEach(
+                row -> System.out.println(String.join(",", row))
+        );
     }
 }
